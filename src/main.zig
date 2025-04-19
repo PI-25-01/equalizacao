@@ -36,6 +36,7 @@ pub fn main() !void {
     defer {
         if (og_tx) |_| {
             rl.unloadTexture(og_tx.?);
+            rl.unloadTexture(gr_tx.?);
             rl.unloadTexture(eq_tx.?);
         }
         rl.closeWindow();
@@ -45,6 +46,7 @@ pub fn main() !void {
         if (rl.isFileDropped()) {
             if (og_tx) |_| {
                 rl.unloadTexture(og_tx.?);
+                rl.unloadTexture(gr_tx.?);
                 rl.unloadTexture(eq_tx.?);
             }
             const files = rl.loadDroppedFiles();
@@ -64,23 +66,45 @@ pub fn main() !void {
                 var eq_cor = try rl.loadImageColors(eq);
                 grayscale(&eq_cor);
 
-                const gr = rl.imageCopy(eq);
+                var gr = rl.imageCopy(og);
+                var gr_cor = try rl.loadImageColors(gr);
+                grayscale(&gr_cor);
+                gr.data = gr_cor.ptr;
+                gr.format = .uncompressed_r8g8b8a8;
                 gr_tx = try rl.loadTextureFromImage(gr);
 
+                for (0..lut.len) |i| {
+                    lut.set(i, std.mem.zeroes(LUTCollumns));
+                }
+
                 for (eq_cor) |cor| {
-                    var linha = lut.get(cor.b);
+                    var linha = lut.get(cor.r);
                     linha.nk += 1;
-                    lut.set(cor.b, linha);
+                    lut.set(cor.r, linha);
                 }
 
                 const total: f64 = @floatFromInt(eq.width * eq.height);
 
                 for (0..lut.slice().len) |i| {
-                    const ant = if (i == 0) null else lut.get(i);
+                    const ant = blk: {
+                        if (i == 0) {
+                            break :blk std.mem.zeroes(LUTCollumns);
+                        } else {
+                            break :blk lut.get(i - 1);
+                        }
+                    };
                     var linha = lut.get(i);
+                    linha.rk = @intCast(i);
                     linha.pr = @as(f64, @floatFromInt(linha.nk)) / total;
-                    linha.fa += if (ant) |_| std.math.clamp(ant.?.pr + linha.fa, 0, 1) else linha.fa;
-                    linha.eq = @intFromFloat(std.math.clamp(std.math.round(linha.fa / 256), 0, 255));
+                    linha.fa = std.math.clamp(ant.fa + linha.pr, 0, 1);
+                    linha.eq = @intFromFloat(@round(linha.fa * 255));
+                    lut.set(i, linha);
+                }
+
+                for (eq_cor) |*cor| {
+                    cor.r = lut.get(cor.r).eq;
+                    cor.g = cor.r;
+                    cor.b = cor.r;
                 }
 
                 eq.data = eq_cor.ptr;
@@ -111,7 +135,7 @@ pub fn main() !void {
 
             // Tons de cinza
             rl.drawText("Tons de cinza", (og_tx.?.width + 64), 4, 32, .black);
-            rl.drawTexture(eq_tx.?, (og_tx.?.width + 64), 64, .white);
+            rl.drawTexture(gr_tx.?, (gr_tx.?.width + 64), 64, .white);
 
             // Histograma equalizado
             rl.drawText("Equalização de histograma", 2 * (og_tx.?.width + 64), 4, 32, .black);
