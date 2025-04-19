@@ -20,7 +20,6 @@ var camera = rl.Camera2D{
 };
 
 var og_tx: ?rl.Texture = null;
-var gr_tx: ?rl.Texture = null;
 var eq_tx: ?rl.Texture = null;
 
 pub fn main() !void {
@@ -36,7 +35,6 @@ pub fn main() !void {
     defer {
         if (og_tx) |_| {
             rl.unloadTexture(og_tx.?);
-            rl.unloadTexture(gr_tx.?);
             rl.unloadTexture(eq_tx.?);
         }
         rl.closeWindow();
@@ -46,7 +44,6 @@ pub fn main() !void {
         if (rl.isFileDropped()) {
             if (og_tx) |_| {
                 rl.unloadTexture(og_tx.?);
-                rl.unloadTexture(gr_tx.?);
                 rl.unloadTexture(eq_tx.?);
             }
             const files = rl.loadDroppedFiles();
@@ -63,24 +60,18 @@ pub fn main() !void {
 
                 // Imagem que será equalizada
                 var eq = rl.imageCopy(og);
-                var eq_cor = try rl.loadImageColors(eq);
-                grayscale(&eq_cor);
-
-                var gr = rl.imageCopy(og);
-                var gr_cor = try rl.loadImageColors(gr);
-                grayscale(&gr_cor);
-                gr.data = gr_cor.ptr;
-                gr.format = .uncompressed_r8g8b8a8;
-                gr_tx = try rl.loadTextureFromImage(gr);
+                const eq_cor = try rl.loadImageColors(eq);
+                // grayscale(&eq_cor);
 
                 for (0..lut.len) |i| {
                     lut.set(i, std.mem.zeroes(LUTCollumns));
                 }
 
                 for (eq_cor) |cor| {
-                    var linha = lut.get(cor.r);
+                    const ch = cor.toHSV();
+                    var linha = lut.get(@intFromFloat(@round(ch.z * 255)));
                     linha.nk += 1;
-                    lut.set(cor.r, linha);
+                    lut.set(@intFromFloat(@round(ch.z * 255)), linha);
                 }
 
                 const total: f64 = @floatFromInt(eq.width * eq.height);
@@ -102,9 +93,12 @@ pub fn main() !void {
                 }
 
                 for (eq_cor) |*cor| {
-                    cor.r = lut.get(cor.r).eq;
-                    cor.g = cor.r;
-                    cor.b = cor.r;
+                    const ch = cor.toHSV();
+                    const linha = lut.get(@intFromFloat(@round(ch.z * 255)));
+                    const nova = rl.Color.fromHSV(ch.x, ch.y, @as(f32, @floatFromInt(linha.eq)) / 255);
+                    cor.r = nova.r;
+                    cor.g = nova.g;
+                    cor.b = nova.b;
                 }
 
                 eq.data = eq_cor.ptr;
@@ -133,13 +127,9 @@ pub fn main() !void {
             rl.drawText("Imagem original", 4, 4, 32, .black);
             rl.drawTexture(og_tx.?, 0, 64, .white);
 
-            // Tons de cinza
-            rl.drawText("Tons de cinza", (og_tx.?.width + 64), 4, 32, .black);
-            rl.drawTexture(gr_tx.?, (gr_tx.?.width + 64), 64, .white);
-
             // Histograma equalizado
-            rl.drawText("Equalização de histograma", 2 * (og_tx.?.width + 64), 4, 32, .black);
-            rl.drawTexture(eq_tx.?, 2 * (og_tx.?.width + 64), 64, .white);
+            rl.drawText("Equalização de histograma", 1 * (og_tx.?.width + 64), 4, 32, .black);
+            rl.drawTexture(eq_tx.?, 1 * (og_tx.?.width + 64), 64, .white);
         } else {
             rl.drawText("Arraste uma imagem aqui para começar", 4, 4, 32, .black);
         }
